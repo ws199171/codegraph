@@ -2,6 +2,7 @@
 change: aosp-multi-repo-adapter
 design-doc: docs/superpowers/specs/2026-06-29-aosp-multi-repo-adapter-design.md
 base-ref: 738d2dc4ad84254b147aeb4a2c34879d60d524da
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 # AOSP Federation Adapter 实施计划
@@ -22,6 +23,7 @@ base-ref: 738d2dc4ad84254b147aeb4a2c34879d60d524da
 - 复用现有模块：`DatabaseConnection`、`QueryBuilder`、`processInBatches`、`Mutex` 直接复用
 - AOSP 专用：针对 Google repo 管理的 git 多仓结构
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 1: 项目地基 — 目录结构、类型定义、配置扩展
@@ -136,6 +138,7 @@ git add src/federation/types.ts src/federation/index.ts src/project-config.ts
 git commit -m "feat(federation): add types, module entry, and config extensions"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 2: 工作区根解析器 — workspace-resolver
@@ -247,6 +250,7 @@ git add src/federation/workspace-resolver.ts src/federation/index.ts
 git commit -m "feat(federation): add workspace root resolver with hybrid discovery chain"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 3: 工作区扫描器 — workspace-scanner
@@ -397,6 +401,7 @@ git add src/federation/workspace-scanner.ts src/federation/index.ts
 git commit -m "feat(federation): add workspace scanner with manifest + BFS hybrid discovery"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 4: Master Index — Schema 创建与管理
@@ -633,6 +638,7 @@ git add src/federation/master-index.ts src/federation/index.ts
 git commit -m "feat(federation): add MasterIndex class with SQLite schema and FTS5"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 5: Public API 提取器
@@ -743,6 +749,7 @@ git add src/federation/public-api-extractor.ts src/federation/index.ts
 git commit -m "feat(federation): add public API extractor with per-language visibility rules"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 6: 仓库并行初始化器
@@ -871,6 +878,7 @@ git add src/federation/repo-initializer.ts src/federation/index.ts
 git commit -m "feat(federation): add parallel repo initializer with failure isolation and resume"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 7: 查询路由器
@@ -967,6 +975,7 @@ git add src/federation/query-router.ts src/federation/index.ts
 git commit -m "feat(federation): add layered query router with MasterIndex-to-CodeGraph deep dive"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 8: CLI 命令注册 — workspace / master / xref / locate
@@ -1252,6 +1261,7 @@ git add src/bin/codegraph.ts
 git commit -m "feat(federation): register 8 CLI commands (workspace, master, xref, locate)"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 9: MCP 工具扩展
@@ -1373,6 +1383,7 @@ git add src/mcp/tools.ts src/mcp/server-instructions.ts
 git commit -m "feat(federation): add codegraph_xref and codegraph_master MCP tools"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 10: CodeGraph API 集成 — src/index.ts 重新导出
@@ -1422,6 +1433,7 @@ git add src/index.ts
 git commit -m "feat(federation): re-export federation module from CodeGraph entry point"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 11: 单元测试 — workspace-scanner + workspace-resolver
@@ -1512,6 +1524,7 @@ git add __tests__/federation/fixtures/test-workspace/ __tests__/federation/works
 git commit -m "test(federation): add workspace scanner and resolver tests with fixture"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 12: 单元测试 — MasterIndex + public-api-extractor
@@ -1611,6 +1624,7 @@ git add __tests__/federation/master-index.test.ts
 git commit -m "test(federation): add MasterIndex schema, CRUD, and FTS5 search tests"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 13: 单元测试 — repo-initializer + query-router
@@ -1740,6 +1754,7 @@ git add __tests__/federation/query-router.test.ts __tests__/federation/repo-init
 git commit -m "test(federation): add query-router and repo-initializer tests"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 14: 单元测试 — MCP 工具
@@ -1809,6 +1824,7 @@ git add __tests__/federation/mcp-tools.test.ts
 git commit -m "test(federation): add MCP tools integration tests"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ### Task 15: 文档
@@ -1868,6 +1884,7 @@ git add CLAUDE.md CHANGELOG.md docs/federation/aosp-workspace-guide.md
 git commit -m "docs(federation): add module docs, changelog entry, and workspace guide"
 ```
 
+archived-with: 2026-06-29-aosp-multi-repo-adapter
 ---
 
 ## 实施顺序

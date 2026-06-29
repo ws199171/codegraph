@@ -1,0 +1,17 @@
+{
+  "change": "aosp-multi-repo-adapter",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "9766be3f7ea3468c32350f7bda81aea02bf97f47192407dbaa2d0ddf45650dbb",
+  "files": [
+    { "path": "openspec/changes/aosp-multi-repo-adapter/proposal.md", "sha256": "09da76c2e1e87dab1874b61c2a69de95db4811ef5196a970c37912673f376cf0" },
+    { "path": "openspec/changes/aosp-multi-repo-adapter/design.md", "sha256": "8987828a5581811bfe91b3d180be035cdd8cee52f5814a82b525e45a71627b3d" },
+    { "path": "openspec/changes/aosp-multi-repo-adapter/tasks.md", "sha256": "921e72f55d144dfc142c2a04c24024077970bbe97c5b0f270584eeaf44bd27a4" },
+    { "path": "openspec/changes/aosp-multi-repo-adapter/specs/cli-tools/spec.md", "sha256": "ee84834aff10f4468172ecee793bf8b3703b0e9f40a054b421275a9d2d13bc98" },
+    { "path": "openspec/changes/aosp-multi-repo-adapter/specs/cross-repo-query/spec.md", "sha256": "4c46bb45e522dbd1f1d283e5ea3b31031a3f8b113bb7ad8ca702dc9ae5099b03" },
+    { "path": "openspec/changes/aosp-multi-repo-adapter/specs/master-index/spec.md", "sha256": "952bcfd9fe7edd2c0fddbed3275ebb819c57c614a2b5f7fe99933d13482d8bd9" },
+    { "path": "openspec/changes/aosp-multi-repo-adapter/specs/workspace-discovery/spec.md", "sha256": "75e39d2de50edb9c2670ed45fd24f51e904b4c9dd80ef6c6d64affe7ff8e101d" }
+  ]
+}
