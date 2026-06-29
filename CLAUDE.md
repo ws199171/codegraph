@@ -33,6 +33,22 @@ Node engines: `>=20.0.0 <25.0.0`. There is a hard exit on Node 25.x and below 20
 
 ## Architecture
 
+### src/federation/ — AOSP 多仓库适配器
+
+AOSP Federation 模块在 CodeGraph 单仓库引擎之上提供轻量多仓库能力：
+
+- `workspace-scanner.ts` — 扫描 AOSP 根目录下所有 Git 仓库（支持 `.repo/manifest.xml` + `.git` BFS 混合发现）
+- `workspace-resolver.ts` — 混合 workspace 根发现链：CLI 参数 > `CODEGRAPH_MASTER_HOME` 环境变量 > path.txt 缓存 > 向上递归
+- `master-index.ts` — 轻量 Master Index（独立 SQLite + FTS5），存储 public API 符号和仓库映射
+- `public-api-extractor.ts` — 按 `visibility`/`isExported`/文件路径从各仓 `.codegraph/codegraph.db` 提取 public 符号
+- `repo-initializer.ts` — 通过 `CodeGraph.open()` API 并行初始化仓库，支持断点续传和失败隔离
+- `query-router.ts` — 分层查询路由：Master Index 定位 → CodeGraph 深入局部图
+
+新增 CLI 命令: `codegraph workspace init|status|add|remove`, `codegraph master build|status`, `codegraph xref|locate`
+新增 MCP 工具: `codegraph_xref`, `codegraph_master`
+
+核心约束：零侵入现有引擎，独立 `.codegraph-master/` 存储，仅支持 AOSP 场景。
+
 ### Layered pipeline
 
 ```
