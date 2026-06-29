@@ -1,6 +1,6 @@
 {
   "name": "@colbymchenry/codegraph",
-  "version": "1.1.3",
+  "version": "1.1.3-AOSP",
   "description": "Supercharge AI coding agents with semantic code intelligence — surgical context, fewer tool calls, faster answers. 100% local.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -33,6 +33,7 @@
   "license": "MIT",
   "dependencies": {
     "@clack/prompts": "^1.3.0",
+    "@fission-ai/openspec": "^1.5.0",
     "commander": "^14.0.2",
     "fast-string-width": "^3.0.2",
     "fast-wrap-ansi": "^0.2.0",
