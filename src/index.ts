@@ -1195,7 +1195,33 @@ export class CodeGraph {
     this.close();
     removeDirectory(this.projectRoot);
   }
+
+  /**
+   * Resolve the AOSP workspace root for this project (federation).
+   * Returns null when not part of a multi-repo workspace.
+   */
+  async getWorkspace(): Promise<string | null> {
+    const { resolveWorkspaceRoot } = await import('./federation/workspace-resolver');
+    return resolveWorkspaceRoot(this.projectRoot);
+  }
+
+  /**
+   * Open the Master Index for this project's AOSP workspace (federation).
+   * Throws if no workspace is configured.
+   */
+  async getMasterIndex(): Promise<import('./federation/master-index').MasterIndex> {
+    const { MasterIndex } = await import('./federation/master-index');
+    const root = await this.getWorkspace();
+    if (!root) throw new Error('No AOSP workspace configured');
+    const pathMod = await import('path');
+    const mi = new MasterIndex(pathMod.join(root, '.codegraph-master', 'codegraph.db'));
+    await mi.open();
+    return mi;
+  }
 }
+
+// Federation module re-exports (AOSP multi-repo adapter)
+export * from './federation';
 
 // Default export
 export default CodeGraph;
