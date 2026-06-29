@@ -4,3 +4,5 @@ export { discoverRepos } from './workspace-scanner';
 export { MasterIndex } from './master-index';
 export { extractRepoPublicSymbols } from './public-api-extractor';
 export { initializeAllRepos } from './repo-initializer';
+export { QueryRouter } from './query-router';
+export type { ExploreResult } from './query-router';
