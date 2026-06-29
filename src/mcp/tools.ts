@@ -713,6 +713,34 @@ export const tools: ToolDefinition[] = [
     },
     annotations: READ_ONLY_ANNOTATIONS,
   },
+  {
+    name: 'codegraph_xref',
+    description: 'Global symbol search across an AOSP workspace via the Master Index. Locate symbols across all indexed repositories without loading full per-repo graphs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Symbol name or FTS5 query (supports prefix match)' },
+        kind: { type: 'string', description: 'Optional kind filter (class, function, method, interface, ...)' },
+        limit: { type: 'number', default: 50, description: 'Maximum results to return' },
+        projectPath: { type: 'string', description: 'Workspace root path (defaults to auto-discovery)' },
+      },
+      required: ['query'],
+    },
+    annotations: READ_ONLY_ANNOTATIONS,
+  },
+  {
+    name: 'codegraph_master',
+    description: 'Query AOSP Master Index status or search for symbols globally across all indexed repositories.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['status', 'search'], default: 'status', description: 'Action: "status" for index statistics, "search" for symbol lookup' },
+        query: { type: 'string', description: 'Symbol name to search (required when action=search)' },
+        projectPath: { type: 'string', description: 'Workspace root path (defaults to auto-discovery)' },
+      },
+    },
+    annotations: READ_ONLY_ANNOTATIONS,
+  },
 ];
 
 /**
@@ -1448,6 +1476,8 @@ export class ToolHandler {
       case 'codegraph_explore': return await this.handleExplore(args);
       case 'codegraph_node': return await this.handleNode(args);
       case 'codegraph_files': return await this.handleFiles(args);
+      case 'codegraph_xref': return await this.handleXref(args);
+      case 'codegraph_master': return await this.handleMaster(args);
       default: return this.errorResult(`Unknown tool: ${toolName}`);
     }
   }
@@ -4025,6 +4055,55 @@ export class ToolHandler {
     }
 
     return this.textResult(this.truncateOutput(output));
+  }
+
+  /**
+   * Federation: global symbol search across AOSP workspace via Master Index.
+   */
+  private async handleXref(args: Record<string, unknown>): Promise<ToolResult> {
+    const { resolveWorkspaceRoot, MasterIndex, QueryRouter } = await import('../federation');
+    const root = resolveWorkspaceRoot(args.projectPath as string || process.cwd());
+    if (!root) {
+      return this.errorResult('No AOSP workspace found. Run \'codegraph workspace init <root>\' first.');
+    }
+    const pathMod = await import('path');
+    const masterIndex = new MasterIndex(pathMod.join(root, '.codegraph-master', 'codegraph.db'));
+    await masterIndex.open();
+    try {
+      const router = new QueryRouter(masterIndex, root);
+      const results = router.xref(args.query as string, {
+        kind: args.kind as string | undefined,
+        limit: typeof args.limit === 'number' ? args.limit : 50,
+      });
+      return this.textResult(JSON.stringify(results, null, 2));
+    } finally {
+      await masterIndex.close();
+    }
+  }
+
+  /**
+   * Federation: query AOSP Master Index status or search symbols globally.
+   */
+  private async handleMaster(args: Record<string, unknown>): Promise<ToolResult> {
+    const { resolveWorkspaceRoot, MasterIndex } = await import('../federation');
+    const root = resolveWorkspaceRoot(args.projectPath as string || process.cwd());
+    if (!root) {
+      return this.errorResult('No AOSP workspace found. Run \'codegraph workspace init <root>\' first.');
+    }
+    const pathMod = await import('path');
+    const masterIndex = new MasterIndex(pathMod.join(root, '.codegraph-master', 'codegraph.db'));
+    await masterIndex.open();
+    try {
+      const action = args.action as string || 'status';
+      if (action === 'search' && args.query) {
+        const results = masterIndex.searchSymbols(args.query as string, { limit: 50 });
+        return this.textResult(JSON.stringify(results, null, 2));
+      }
+      const stats = masterIndex.getMasterStats();
+      return this.textResult(JSON.stringify(stats, null, 2));
+    } finally {
+      await masterIndex.close();
+    }
   }
 
   /**
