@@ -67,6 +67,15 @@ calls; a grep/read exploration is dozens.
 - Index lags file writes by ~1 second.
 - Cross-file resolution is best-effort name matching; ambiguous calls may return multiple candidates.
 - No live correctness validation — that's still the TypeScript compiler / test suite / linter's job. Codegraph supplements those with structural context they don't have.
+
+## AOSP multi-repo workspace (federation tools)
+
+When operating inside an AOSP multi-repo workspace (initialized via \`codegraph workspace init\`), two additional tools are available for global, cross-repository queries via the Master Index:
+
+- \`codegraph_xref\`: Global symbol search across all indexed repositories. Returns symbol name, kind, language, repository path, and file path. Best for "where is X defined in AOSP?" questions. No per-repo graphs loaded — searches the Master Index only.
+- \`codegraph_master\`: Query Master Index status (total symbols, repos covered, per-language breakdown) or search for symbols globally. Use \`action=status\` for overview, \`action=search\` with a \`query\` for symbol lookup.
+
+These tools complement \`codegraph_explore\` (which works within a single repo): use federation tools to locate which repo(s) contain a symbol, then \`codegraph_explore\` with the appropriate \`projectPath\` to dive deep into that repo's graph.
 `;
 
 /**
