@@ -2190,6 +2190,256 @@ program
     console.log(packageJson.version);
   });
 
+// =============================================================================
+// Federation Commands (AOSP multi-repo adapter)
+// =============================================================================
+
+// codegraph workspace init <root>
+program
+  .command('workspace init <root>')
+  .description('Scan AOSP workspace root for all Git repositories and initialize CodeGraph on each')
+  .action(async (root: string) => {
+    const absRoot = path.resolve(root);
+    const clack = await importESM('@clack/prompts');
+    clack.intro('Initializing AOSP workspace');
+
+    try {
+      const { discoverRepos, MasterIndex, initializeAllRepos, writePathTxtCache } = await import('../federation');
+      const repos = discoverRepos(absRoot);
+      if (repos.length === 0) {
+        clack.log.error(`No git repositories found in ${absRoot}`);
+        clack.outro('');
+        process.exit(1);
+      }
+      clack.log.info(`Found ${formatNumber(repos.length)} repositories`);
+
+      const masterIndex = new MasterIndex(path.join(absRoot, '.codegraph-master', 'codegraph.db'));
+      await masterIndex.open();
+      masterIndex.upsertRepos(repos);
+
+      const cpus = (await import('os')).cpus().length;
+      clack.log.info(`Initializing ${repos.length} repositories (parallel: ${cpus * 2})...`);
+      const result = await initializeAllRepos(repos, masterIndex);
+
+      writePathTxtCache(absRoot);
+
+      clack.log.success(`Initialized ${result.succeeded.length} repos`);
+      if (result.failed.length > 0) {
+        clack.log.warn(`${result.failed.length} repos failed:`);
+        for (const f of result.failed) {
+          clack.log.warn(`  ${f.path}: ${f.error}`);
+        }
+      }
+      await masterIndex.close();
+      clack.outro('Done');
+    } catch (err) {
+      clack.log.error(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+// codegraph workspace status
+program
+  .command('workspace status')
+  .description('Show AOSP workspace index status')
+  .action(async () => {
+    const { resolveWorkspaceRoot, MasterIndex } = await import('../federation');
+    const root = resolveWorkspaceRoot(process.cwd());
+    if (!root) {
+      error('No AOSP workspace found. Run \'codegraph workspace init <root>\' first.');
+      process.exit(1);
+    }
+    const masterIndex = new MasterIndex(path.join(root, '.codegraph-master', 'codegraph.db'));
+    await masterIndex.open();
+    const repos = masterIndex.listRepos();
+    const indexed = repos.filter(r => r.status === 'indexed').length;
+    const errored = repos.filter(r => r.status === 'error').length;
+    const pending = repos.filter(r => r.status === 'pending').length;
+    console.log(`Workspace: ${root}`);
+    console.log(`Repositories: ${repos.length} (${indexed} indexed, ${pending} pending, ${errored} error)`);
+    await masterIndex.close();
+  });
+
+// codegraph workspace add <repo-path>
+program
+  .command('workspace add <repoPath>')
+  .description('Add a repository to the AOSP workspace')
+  .action(async (repoPath: string) => {
+    const { resolveWorkspaceRoot, MasterIndex } = await import('../federation');
+    const root = resolveWorkspaceRoot(process.cwd());
+    if (!root) {
+      error('No AOSP workspace found. Run \'codegraph workspace init <root>\' first.');
+      process.exit(1);
+    }
+    const absPath = path.resolve(repoPath);
+    if (!fs.existsSync(path.join(absPath, '.git'))) {
+      error(`Not a git repository: ${absPath}`);
+      process.exit(1);
+    }
+    const masterIndex = new MasterIndex(path.join(root, '.codegraph-master', 'codegraph.db'));
+    await masterIndex.open();
+    masterIndex.upsertRepos([{ path: path.relative(root, absPath), absPath, status: 'pending' }]);
+    console.log(`Added: ${path.relative(root, absPath)}`);
+    await masterIndex.close();
+  });
+
+// codegraph workspace remove <repo-path>
+program
+  .command('workspace remove <repoPath>')
+  .description('Remove a repository from the AOSP workspace')
+  .action(async (repoPath: string) => {
+    const { resolveWorkspaceRoot, MasterIndex } = await import('../federation');
+    const root = resolveWorkspaceRoot(process.cwd());
+    if (!root) {
+      error('No AOSP workspace found. Run \'codegraph workspace init <root>\' first.');
+      process.exit(1);
+    }
+    const masterIndex = new MasterIndex(path.join(root, '.codegraph-master', 'codegraph.db'));
+    await masterIndex.open();
+    masterIndex.clearSymbols(repoPath);
+    console.log(`Removed: ${repoPath}`);
+    await masterIndex.close();
+  });
+
+// codegraph master build [--force]
+program
+  .command('master build')
+  .description('Build the AOSP Master Index from all indexed repositories')
+  .option('--force', 'Force full rebuild, clearing all existing data')
+  .action(async (options: { force?: boolean }) => {
+    const { resolveWorkspaceRoot, MasterIndex, extractRepoPublicSymbols } = await import('../federation');
+    const root = resolveWorkspaceRoot(process.cwd());
+    if (!root) {
+      error('No AOSP workspace found. Run \'codegraph workspace init <root>\' first.');
+      process.exit(1);
+    }
+    const masterIndex = new MasterIndex(path.join(root, '.codegraph-master', 'codegraph.db'));
+    await masterIndex.open();
+
+    const repos = masterIndex.listRepos().filter(r => r.status === 'indexed');
+    if (repos.length === 0) {
+      console.log('No indexed repositories. Run \'codegraph workspace init\' first.');
+      await masterIndex.close();
+      return;
+    }
+
+    if (options.force) {
+      masterIndex.clearSymbols();
+    }
+
+    let totalSymbols = 0;
+    for (const repo of repos) {
+      try {
+        const symbols = extractRepoPublicSymbols(repo.absPath);
+        const enriched = symbols.map(s => ({ ...s, repoPath: repo.path }));
+        masterIndex.upsertSymbols(enriched);
+        totalSymbols += symbols.length;
+      } catch (err) {
+        error(`Failed to extract from ${repo.path}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    const stats = masterIndex.getMasterStats();
+    console.log(`Master Index: ${stats.totalSymbols} public symbols across ${stats.repoCount} repos`);
+    await masterIndex.close();
+  });
+
+// codegraph master status
+program
+  .command('master status')
+  .description('Show AOSP Master Index statistics')
+  .action(async () => {
+    const { resolveWorkspaceRoot, MasterIndex } = await import('../federation');
+    const root = resolveWorkspaceRoot(process.cwd());
+    if (!root) {
+      error('No AOSP workspace found. Run \'codegraph workspace init <root>\' first.');
+      process.exit(1);
+    }
+    const masterIndex = new MasterIndex(path.join(root, '.codegraph-master', 'codegraph.db'));
+    await masterIndex.open();
+    const stats = masterIndex.getMasterStats();
+    if (stats.totalSymbols === 0) {
+      console.log('Master Index not built yet. Run \'codegraph master build\' to create it.');
+    } else {
+      console.log(`Total symbols: ${stats.totalSymbols}`);
+      console.log(`Repositories: ${stats.repoCount}`);
+      for (const [lang, count] of Object.entries(stats.byLanguage)) {
+        console.log(`  ${lang}: ${count}`);
+      }
+    }
+    await masterIndex.close();
+  });
+
+// codegraph xref <symbol>
+program
+  .command('xref <symbol>')
+  .description('Search for a symbol globally across the AOSP workspace')
+  .option('-k, --kind <kind>', 'Filter by node kind')
+  .option('-l, --limit <number>', 'Maximum results', '50')
+  .option('-j, --json', 'Output as JSON')
+  .action(async (symbol: string, options: { kind?: string; limit?: string; json?: boolean }) => {
+    const { resolveWorkspaceRoot, MasterIndex, QueryRouter } = await import('../federation');
+    const root = resolveWorkspaceRoot(process.cwd());
+    if (!root) {
+      error('No AOSP workspace found. Run \'codegraph workspace init <root>\' first.');
+      process.exit(1);
+    }
+    const masterIndex = new MasterIndex(path.join(root, '.codegraph-master', 'codegraph.db'));
+    await masterIndex.open();
+
+    const router = new QueryRouter(masterIndex, root);
+    const limit = parseInt(options.limit || '50', 10);
+    const results = router.xref(symbol, { kind: options.kind, limit });
+
+    if (options.json) {
+      console.log(JSON.stringify(results, null, 2));
+    } else {
+      if (results.length === 0) {
+        info(`No symbols found matching '${symbol}'`);
+      } else {
+        console.log(`\nSearch results for "${symbol}" (${results.length}):\n`);
+        for (const r of results) {
+          const loc = r.startLine ? `:${r.startLine}` : '';
+          console.log(`  [${r.kind}] ${r.qualifiedName}`);
+          console.log(`  ${r.repoPath}/${r.filePath}${loc}  (${r.language})`);
+          console.log();
+        }
+      }
+    }
+    await masterIndex.close();
+  });
+
+// codegraph locate <symbol>
+program
+  .command('locate <symbol>')
+  .description('Locate which repositories contain a symbol')
+  .option('-j, --json', 'Output as JSON')
+  .action(async (symbol: string, options: { json?: boolean }) => {
+    const { resolveWorkspaceRoot, MasterIndex, QueryRouter } = await import('../federation');
+    const root = resolveWorkspaceRoot(process.cwd());
+    if (!root) {
+      error('No AOSP workspace found. Run \'codegraph workspace init <root>\' first.');
+      process.exit(1);
+    }
+    const masterIndex = new MasterIndex(path.join(root, '.codegraph-master', 'codegraph.db'));
+    await masterIndex.open();
+
+    const router = new QueryRouter(masterIndex, root);
+    const repos = router.locateSymbol(symbol);
+
+    if (options.json) {
+      console.log(JSON.stringify(repos, null, 2));
+    } else {
+      if (repos.length === 0) {
+        info(`Symbol '${symbol}' not found in any repository`);
+      } else {
+        console.log(`\n'${symbol}' found in ${repos.length} repos:\n`);
+        for (const r of repos) console.log(`  ${r}`);
+      }
+    }
+    await masterIndex.close();
+  });
+
 // Parse and run
 program.parse();
 
