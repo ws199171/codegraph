@@ -31,6 +31,18 @@ import { logWarn } from './errors';
 /** Filename of the project-scoped config, resolved relative to the project root. */
 export const PROJECT_CONFIG_FILENAME = 'codegraph.json';
 
+/** Workspace configuration for multi-repo federation (e.g. AOSP). */
+export interface WorkspaceConfig {
+  type: string;
+  root: string;
+}
+
+/** Master Graph storage configuration for the federation Master Index. */
+export interface MasterGraphConfig {
+  /** Directory path (relative to workspace root) where the Master Index DB lives. */
+  store: string;
+}
+
 export interface ProjectConfig {
   /** Map of custom file extension (`.foo`) to a supported language id. */
   extensions?: Record<string, string>;
@@ -53,6 +65,10 @@ export interface ProjectConfig {
    * and your `.gitignore`.
    */
   exclude?: string[];
+  /** Multi-repo workspace configuration (federation). */
+  workspace?: WorkspaceConfig;
+  /** Master Graph storage configuration (federation). */
+  masterGraph?: Partial<MasterGraphConfig>;
 }
 
 /** Parsed, validated view of a project's `codegraph.json`. */
@@ -60,6 +76,8 @@ interface ParsedConfig {
   extensions: Record<string, Language>;
   includeIgnored: string[];
   exclude: string[];
+  workspace: WorkspaceConfig | null;
+  masterGraph: MasterGraphConfig;
 }
 
 interface CacheEntry {
@@ -77,10 +95,13 @@ const cache = new Map<string, CacheEntry>();
 
 /** Shared frozen empties so the no-config path allocates nothing. */
 const EMPTY_EXTENSIONS: Record<string, Language> = Object.freeze({});
+const DEFAULT_MASTER_GRAPH: MasterGraphConfig = Object.freeze({ store: '.codegraph-master/' });
 const EMPTY_CONFIG: ParsedConfig = Object.freeze({
   extensions: EMPTY_EXTENSIONS,
   includeIgnored: Object.freeze([]) as unknown as string[],
   exclude: Object.freeze([]) as unknown as string[],
+  workspace: null,
+  masterGraph: DEFAULT_MASTER_GRAPH,
 });
 
 /**
@@ -132,10 +153,12 @@ function parseConfig(file: string): ParsedConfig {
   const extensions = extractExtensions(parsed, file);
   const includeIgnored = extractIncludeIgnored(parsed, file);
   const exclude = extractExclude(parsed, file);
-  if (extensions === EMPTY_EXTENSIONS && includeIgnored.length === 0 && exclude.length === 0) {
+  const workspace = extractWorkspace(parsed, file);
+  const masterGraph = extractMasterGraph(parsed);
+  if (extensions === EMPTY_EXTENSIONS && includeIgnored.length === 0 && exclude.length === 0 && !workspace && masterGraph === DEFAULT_MASTER_GRAPH) {
     return EMPTY_CONFIG;
   }
-  return { extensions, includeIgnored, exclude };
+  return { extensions, includeIgnored, exclude, workspace, masterGraph };
 }
 
 /**
@@ -215,6 +238,31 @@ function extractExclude(parsed: object, file: string): string[] {
 }
 
 /**
+ * Validate the `workspace` field: must be an object with non-empty `type` and
+ * `root` strings. Returns null for missing or incomplete entries (never throws).
+ */
+function extractWorkspace(parsed: object, file: string): WorkspaceConfig | null {
+  const ws = (parsed as ProjectConfig).workspace;
+  if (!ws || typeof ws !== 'object' || Array.isArray(ws)) return null;
+  if (typeof ws.type !== 'string' || !ws.type.trim() || typeof ws.root !== 'string' || !ws.root.trim()) {
+    logWarn(`Ignoring "workspace" in ${PROJECT_CONFIG_FILENAME}: must have non-empty "type" and "root" string fields`, { file });
+    return null;
+  }
+  return { type: ws.type.trim(), root: ws.root.trim() };
+}
+
+/**
+ * Validate the `masterGraph` field: returns a `MasterGraphConfig` with the
+ * configured `store` or the default `.codegraph-master/`. Never throws.
+ */
+function extractMasterGraph(parsed: object): MasterGraphConfig {
+  const mg = (parsed as ProjectConfig).masterGraph;
+  if (!mg || typeof mg !== 'object' || Array.isArray(mg)) return DEFAULT_MASTER_GRAPH;
+  if (typeof mg.store !== 'string' || !mg.store.trim()) return DEFAULT_MASTER_GRAPH;
+  return { store: mg.store.trim() };
+}
+
+/**
  * Load the parsed `codegraph.json` for a project, mtime-cached. A missing or
  * malformed file yields the zero-config default. One `stat` (and at most one
  * read/parse) while a single config file is in force, shared across every field.
@@ -278,4 +326,24 @@ export function loadExcludePatterns(rootDir: string): string[] {
 /** Test/maintenance hook: forget cached config (e.g. after rewriting it in a test). */
 export function clearProjectConfigCache(): void {
   cache.clear();
+}
+
+/**
+ * Load the validated `workspace` configuration for a project, mtime-cached.
+ *
+ * Returns the workspace type and root, or null when no workspace is configured
+ * (the zero-config default for single-repo projects).
+ */
+export function loadWorkspaceConfig(rootDir: string): WorkspaceConfig | null {
+  return loadParsedConfig(rootDir).workspace;
+}
+
+/**
+ * Load the validated `masterGraph` storage configuration for a project,
+ * mtime-cached.
+ *
+ * Returns the configured store directory or the default `.codegraph-master/`.
+ */
+export function loadMasterGraphConfig(rootDir: string): MasterGraphConfig {
+  return loadParsedConfig(rootDir).masterGraph;
 }
