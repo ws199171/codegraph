@@ -9,6 +9,8 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### New Features
+- **AOSP Federation Adapter**: 新增 `src/federation/` 模块，为 AOSP 多仓库工作区提供全局符号搜索、仓库定位和分层查询能力。新增 8 个 CLI 命令（`workspace init|status|add|remove`、`master build|status`、`xref`、`locate`）和 2 个 MCP 工具（`codegraph_xref`、`codegraph_master`）。零侵入现有核心引擎，使用独立 `.codegraph-master/` SQLite 存储，支持 FTS5 全文搜索。详见 `docs/federation/aosp-workspace-guide.md`。
 
 ## [1.1.3] - 2026-06-29
 
