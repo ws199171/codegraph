@@ -1,0 +1,2 @@
+- [x] 1. Worker 始终渲染 3 行 + 保留上次 phaseName
+- [x] 2. 工厂传递 lastPhaseName 用于 completion 回调

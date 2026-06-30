@@ -64,24 +64,27 @@ function renderBar(frame: number, filled: number, empty: number): string {
 // Mutable state for the three-line display
 let currentRepoLine = '';
 let currentPhaseName = '';
+let lastPhaseName = ''; // Preserved across phase-name clear to avoid display flicker
 let currentPercent = -1;
 let currentCount = 0;
 let currentEtaLine = '';
 let terminalCols = 80;
 let rendered = false; // Have we rendered at least once?
+let renderedLines = 0; // Actual number of lines from last render (for cursor jump)
 
 function render(): void {
-  if (!currentRepoLine && !currentPhaseName) return;
+  if (!currentRepoLine) return;
+
   const frame = animFrame();
   const glyphIdx = Math.floor(frame / FRAMES_PER_GLYPH) % SPINNER_GLYPHS.length;
   const glyph = SPINNER_GLYPHS[glyphIdx] ?? SPINNER_GLYPHS[0] ?? '.';
   const color = shimmerColor(frame);
 
-  // Build three lines
+  // Always produce exactly 3 lines — cursor movement depends on it
   const lines: string[] = [];
 
-  // Line 1: repo line (dimmed label + bold repo info, truncated to terminal width)
-  if (currentRepoLine) {
+  // Line 1: repo line (dimmed label + bold repo info, truncated)
+  {
     const maxRepoLen = Math.max(terminalCols - 30, 20);
     const truncatedRepo = currentRepoLine.length > maxRepoLen
       ? currentRepoLine.slice(0, maxRepoLen - 3) + '...'
@@ -89,54 +92,60 @@ function render(): void {
     lines.push(`  ${DM}AOSP Init${RST}  ${BOLD}${truncatedRepo}${RST}`);
   }
 
-  // Line 2: phase line (spinner + shimmer bar + percent)
-  if (currentPhaseName) {
+  // Line 2: phase line (spinner + shimmer bar + percent).
+  // Preserve lastPhaseName so the phase line never disappears during repo transitions.
+  {
+    const phaseName = currentPhaseName || lastPhaseName || 'Initializing...';
     let phasePart: string;
-    if (currentPercent >= 0) {
+    if (currentPhaseName && currentPercent >= 0) {
       const filled = Math.round(BAR_WIDTH * currentPercent / 100);
       const empty = BAR_WIDTH - filled;
-      phasePart = `${currentPhaseName}...  ${renderBar(frame, filled, empty)}  ${currentPercent}%`;
-    } else if (currentCount > 0) {
-      phasePart = `${currentPhaseName}...  ${formatNumber(currentCount)} files`;
+      phasePart = `${phaseName}  ${renderBar(frame, filled, empty)}  ${currentPercent}%`;
+    } else if (currentPhaseName && currentCount > 0) {
+      phasePart = `${phaseName}  ${formatNumber(currentCount)} files found`;
+    } else if (currentPhaseName) {
+      phasePart = `${phaseName}...`;
     } else {
-      phasePart = `${currentPhaseName}...`;
+      phasePart = `${phaseName}`;
     }
     lines.push(`  ${DM}${G.rail}${RST}  ${color}${glyph}${RST} ${phasePart}`);
   }
 
   // Line 3: ETA line (dimmed)
-  if (currentEtaLine) {
-    lines.push(`  ${DM}${currentEtaLine}${RST}`);
-  }
+  lines.push(`  ${DM}${currentEtaLine || 'Calculating...'}${RST}`);
 
-  // Use cursor control to overwrite previous three lines
-  // \x1b[3A = move up 3 lines, \x1b[K = clear line
+  // Cursor control — use recorded line count from previous render
   let output = '';
   if (rendered) {
-    output = '\x1b[3A'; // Move up 3 lines
+    output = `\x1b[${renderedLines}A`; // Move up by exact number of previously rendered lines
   } else {
-    output = '\x1b[?25l'; // Hide cursor on first render
+    output = '\x1b[?25l';
     rendered = true;
   }
 
-  for (let i = 0; i < lines.length; i++) {
-    output += `\x1b[K${lines[i]}`; // Clear line + content
-    if (i < lines.length - 1) output += '\n';
+  for (let i = 0; i < 3; i++) {
+    output += `\x1b[K${lines[i]}`;
+    if (i < 2) output += '\n';
   }
+  renderedLines = 3;
 
   writeStdout(`\r${output}`);
 }
 
 function finishWithSummary(lines: string[]): void {
-  // Clear the three-line display
-  if (rendered) {
-    writeStdout('\x1b[3A\x1b[K\x1b[B\x1b[K\x1b[B\x1b[K\r');
+  // Clear the progress display using recorded line count
+  if (rendered && renderedLines > 0) {
+    writeStdout(`\x1b[${renderedLines}A`);
+    for (let i = 0; i < renderedLines; i++) {
+      writeStdout('\x1b[K\n');
+    }
+    writeStdout(`\x1b[${renderedLines}A\r`);
     rendered = false;
+    renderedLines = 0;
   }
 
   // Output summary lines
   for (const line of lines) {
-    // Color success lines (✅) green, failure lines (❌) red
     if (line.startsWith('✅')) {
       writeStdout(`${GRN}${line}${RST}\n`);
     } else if (line.startsWith('❌')) {
@@ -146,7 +155,6 @@ function finishWithSummary(lines: string[]): void {
     }
   }
 
-  // Restore cursor
   writeStdout('\x1b[?25h');
 }
 
@@ -155,11 +163,12 @@ const tickInterval = setInterval(render, 50);
 
 parentPort!.on('message', (msg: AospShimmerWorkerMessage) => {
   if (msg.type === 'update') {
-    currentRepoLine = msg.repoLine;
+    currentRepoLine = msg.repoLine || currentRepoLine;
     currentPhaseName = msg.phaseName;
+    if (currentPhaseName) lastPhaseName = currentPhaseName;
     currentPercent = msg.percent;
     currentCount = msg.count;
-    currentEtaLine = msg.etaLine;
+    currentEtaLine = msg.etaLine || currentEtaLine;
   } else if (msg.type === 'summary') {
     clearInterval(tickInterval);
     finishWithSummary(msg.lines);
@@ -168,9 +177,13 @@ parentPort!.on('message', (msg: AospShimmerWorkerMessage) => {
     terminalCols = msg.cols;
   } else if (msg.type === 'stop') {
     clearInterval(tickInterval);
-    // Clear display and restore cursor
-    if (rendered) {
-      writeStdout('\x1b[3A\x1b[K\x1b[B\x1b[K\x1b[B\x1b[K\r');
+    // Clear display and restore cursor using recorded count
+    if (rendered && renderedLines > 0) {
+      writeStdout(`\x1b[${renderedLines}A`);
+      for (let i = 0; i < renderedLines; i++) {
+        writeStdout('  \x1b[K\n');
+      }
+      writeStdout(`\x1b[${renderedLines}A\r`);
     }
     writeStdout('\x1b[?25h');
     parentPort!.postMessage({ type: 'stopped' });
