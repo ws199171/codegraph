@@ -1,4 +1,3 @@
-import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { RepoInfo, InitOptions, InitResult, InitProgress } from './types';
@@ -31,7 +30,7 @@ export async function initializeAllRepos(
 ): Promise<InitResult> {
   const succeeded: string[] = [];
   const failed: Array<{ path: string; error: string }> = [];
-  const concurrency = options.concurrency || os.cpus().length * 2;
+  const concurrency = options.concurrency || 8;
   const pending = repos.filter((r) => r.status !== 'indexed' && r.status !== 'indexing');
   const total = pending.length;
   let completed = 0;

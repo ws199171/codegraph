@@ -2249,8 +2249,7 @@ program
   .option('-c, --concurrency <n>', 'Parallel repo initialization count')
   .action(async (root: string, options: { concurrency?: string }) => {
     const absRoot = path.resolve(root);
-    const osModule = await import('os');
-    const concurrency = options.concurrency ? parseInt(options.concurrency, 10) : osModule.cpus().length * 2;
+    const concurrency = options.concurrency ? parseInt(options.concurrency, 10) : 8;
 
     try {
       const { discoverRepos, MasterIndex, initializeAllRepos, writePathTxtCache } = await import('../federation');
