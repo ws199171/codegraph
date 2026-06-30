@@ -13,6 +13,11 @@ dist/
 *.swo
 *~
 
+.cursor
+.codebuddy
+.agents
+.claude
+
 # OS
 .DS_Store
 Thumbs.db
