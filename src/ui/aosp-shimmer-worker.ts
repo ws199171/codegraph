@@ -114,10 +114,11 @@ function render(): void {
   // Line 3: ETA line (dimmed)
   lines.push(`  ${DM}${currentEtaLine || 'Calculating...'}${RST}`);
 
-  // Cursor control — use recorded line count from previous render
+  // Cursor control — use recorded line count from previous render.
+  // \r must come AFTER \x1b[A, otherwise the escape is ignored by some terminals.
   let output = '';
   if (rendered) {
-    output = `\x1b[${renderedLines}A`; // Move up by exact number of previously rendered lines
+    output = `\x1b[${renderedLines}A\r`; // Move up by exact count, then CR
   } else {
     output = '\x1b[?25l';
     rendered = true;
@@ -129,17 +130,18 @@ function render(): void {
   }
   renderedLines = 3;
 
-  writeStdout(`\r${output}`);
+  writeStdout(output);
 }
 
 function finishWithSummary(lines: string[]): void {
-  // Clear the progress display using recorded line count
+  // Clear the progress display using recorded line count.
+  // \r after \x1b[A ensures terminal correctly processes the escape.
   if (rendered && renderedLines > 0) {
-    writeStdout(`\x1b[${renderedLines}A`);
+    let clear = '';
     for (let i = 0; i < renderedLines; i++) {
-      writeStdout('\x1b[K\n');
+      clear += '\x1b[K\n';
     }
-    writeStdout(`\x1b[${renderedLines}A\r`);
+    writeStdout(`\x1b[${renderedLines}A\r${clear}\x1b[${renderedLines}A\r`);
     rendered = false;
     renderedLines = 0;
   }
@@ -179,11 +181,11 @@ parentPort!.on('message', (msg: AospShimmerWorkerMessage) => {
     clearInterval(tickInterval);
     // Clear display and restore cursor using recorded count
     if (rendered && renderedLines > 0) {
-      writeStdout(`\x1b[${renderedLines}A`);
+      let clear = '';
       for (let i = 0; i < renderedLines; i++) {
-        writeStdout('  \x1b[K\n');
+        clear += '\x1b[K\n';
       }
-      writeStdout(`\x1b[${renderedLines}A\r`);
+      writeStdout(`\x1b[${renderedLines}A\r${clear}\x1b[${renderedLines}A\r`);
     }
     writeStdout('\x1b[?25h');
     parentPort!.postMessage({ type: 'stopped' });
