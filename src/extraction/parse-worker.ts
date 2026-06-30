@@ -57,8 +57,16 @@ const parseCounts = new Map<Language, number>();
 
 parentPort!.on('message', async (msg: { type: string; id?: number; filePath?: string; content?: string; languages?: Language[]; frameworkNames?: string[]; language?: Language }) => {
   if (msg.type === 'load-grammars') {
-    await loadGrammarsForLanguages(msg.languages!);
-    parentPort!.postMessage({ type: 'grammars-loaded' });
+    try {
+      await loadGrammarsForLanguages(msg.languages!);
+      parentPort?.postMessage({ type: 'grammars-loaded' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      parentPort?.postMessage({ type: 'grammar-load-error', message });
+      // Don't send grammars-loaded — a systemic failure (e.g. WASM runtime
+      // init failed) means the worker has no usable grammars. Let the pool
+      // detect the absence and respawn a replacement.
+    }
   } else if (msg.type === 'parse') {
     const { id, filePath, content, frameworkNames } = msg;
     try {

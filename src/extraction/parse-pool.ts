@@ -216,6 +216,19 @@ export class ParseWorkerPool {
       this.drain();
       return;
     }
+    if (m.type === 'grammar-load-error') {
+      // Grammar loading failed at the worker level (systemic — e.g. WASM runtime
+      // init failure, not a per-grammar skip). The worker never sent
+      // 'grammars-loaded' so it's still in `this.pending`. Terminate it now
+      // — no grammars are usable — and spawn a replacement if healthy.
+      this.log(`Worker grammar load error: ${(m as unknown as { message: string }).message || 'unknown error'}`);
+      this.removeWorker(w);
+      try { void w.terminate(); } catch { /* already gone */ }
+      // Not a crash — the worker exited cleanly, so don't charge the crash budget.
+      if (this.healthy) this.spawnOne();
+      this.drain();
+      return;
+    }
     if (m.type === 'parse-result') {
       const job = this.inflight.get(w);
       if (!job || (m.id !== undefined && m.id !== job.id)) return; // stale (post-recycle)
