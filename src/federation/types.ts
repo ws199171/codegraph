@@ -34,6 +34,14 @@ export interface InitProgress {
   total: number;
   currentRepo?: string;
   repoDurationMs?: number;
+  /** Current phase of the repo being initialized (scanning/parsing/storing/resolving) */
+  repoPhase?: 'scanning' | 'parsing' | 'storing' | 'resolving';
+  /** Current file count within the current phase */
+  repoCurrent?: number;
+  /** Total file count for the current phase */
+  repoTotal?: number;
+  /** Estimated remaining time in milliseconds (undefined while warming up) */
+  estimatedRemainingMs?: number;
 }
 
 export interface InitOptions {
