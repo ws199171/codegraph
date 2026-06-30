@@ -16,6 +16,31 @@ codegraph workspace init /path/to/aosp/root
 
 扫描 AOSP 根目录下所有 Git 仓库（优先解析 `.repo/manifest.xml`，回退到 `.git` BFS 递归扫描），为每个仓库创建 CodeGraph 索引。
 
+#### 带进度显示的初始化（推荐）
+
+```bash
+codegraph aosp-init /path/to/aosp/root
+```
+
+`aosp-init` 是 `workspace init` 的增强版，提供实时进度反馈：
+
+- **两级进度显示**：仓库级（`[45/1206] frameworks/base`）+ 仓库内部阶段级（Scanning/Parsing/Resolving 百分比条）
+- **ETA 预估**：基于最近 10 个仓库的平均耗时推算剩余时间
+- **Ctrl+C 中断恢复**：中断后已完成仓库的状态已保存，再次运行可从断点继续
+- **完成汇总**：输出成功/失败仓库清单，失败仓库附带错误原因
+
+```bash
+# 自定义并发数（默认 CPU × 2）
+codegraph aosp-init /path/to/aosp/root --concurrency 8
+```
+
+终端渲染效果：
+```
+  AOSP Init  [ 45 / 1,206 ]  frameworks/base
+  │  ✳ Parsing code...  ████████░░░░░░░░░░░░  40%
+  ETA: ~23 min remaining
+```
+
 ### 2. 构建 Master Index
 
 ```bash

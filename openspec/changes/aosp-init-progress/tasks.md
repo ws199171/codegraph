@@ -29,5 +29,5 @@
 
 ## 6. 文档
 
-- [ ] 6.1 更新 `docs/federation/aosp-workspace-guide.md`：添加 `aosp-init` 命令说明和使用示例
-- [ ] 6.2 更新 `CHANGELOG.md` `[Unreleased]` 下添加新命令条目
+- [x] 6.1 更新 `docs/federation/aosp-workspace-guide.md`：添加 `aosp-init` 命令说明和使用示例
+- [x] 6.2 更新 `CHANGELOG.md` `[Unreleased]` 下添加新命令条目
