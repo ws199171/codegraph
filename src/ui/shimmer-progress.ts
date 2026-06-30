@@ -129,26 +129,33 @@ export function createAospProgress(): AospShimmerProgress {
   let completed = 0;
   let total = 0;
   let currentEta = 'Calculating ETA...';
+  let flushPending = false;
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /** Rebuild slots array from map (preserves insertion order) and send to worker. */
+  /** Throttled: rebuilds slots array from map (preserves insertion order) and sends to worker. */
   function flush(): void {
-    if (!worker || stopped) return;
-    let idx = 0;
-    const slots = Array.from(slotMap.entries()).map(([, s]) => ({
-      id: idx++,
-      repoName: s.repoName,
-      phaseName: s.phaseName,
-      percent: s.percent,
-      count: s.count,
-    }));
-    try {
-      worker.postMessage({
-        type: 'update',
-        header: `[ ${formatNum(completed)} / ${formatNum(total)} ]`,
-        etaLine: currentEta,
-        slots,
-      });
-    } catch { /* worker may have terminated */ }
+    if (flushPending) return;
+    flushPending = true;
+    flushTimer = setTimeout(() => {
+      flushPending = false;
+      if (!worker || stopped) return;
+      let idx = 0;
+      const slots = Array.from(slotMap.entries()).map(([, s]) => ({
+        id: idx++,
+        repoName: s.repoName,
+        phaseName: s.phaseName,
+        percent: s.percent,
+        count: s.count,
+      }));
+      try {
+        worker.postMessage({
+          type: 'update',
+          header: `[ ${formatNum(completed)} / ${formatNum(total)} ]`,
+          etaLine: currentEta,
+          slots,
+        });
+      } catch { /* worker may have terminated */ }
+    }, 500);
   }
 
   return {
@@ -190,6 +197,7 @@ export function createAospProgress(): AospShimmerProgress {
 
     stop() {
       stopped = true;
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
       process.off('SIGWINCH', resizeHandler);
       return new Promise<void>((resolve) => {
         if (!worker) { resolve(); return; }

@@ -2427,22 +2427,47 @@ masterCmd
 
     if (options.force) {
       masterIndex.clearSymbols();
+      masterIndex.checkpointWAL(); // prevent WAL blowup from mass DELETE
     }
 
+    const t0 = Date.now();
     let totalSymbols = 0;
+    let processed = 0;
+    const total = repos.length;
+    const errors: string[] = [];
     for (const repo of repos) {
+      processed++;
+      const idx = `${processed}/${total}`;
       try {
+        const extractStart = Date.now();
         const symbols = extractRepoPublicSymbols(repo.absPath);
-        const enriched = symbols.map(s => ({ ...s, repoPath: repo.path }));
-        masterIndex.upsertSymbols(enriched);
-        totalSymbols += symbols.length;
+        const extractMs = Date.now() - extractStart;
+        if (symbols.length > 0) {
+          const enriched = symbols.map(s => ({ ...s, repoPath: repo.path }));
+          const upsertStart = Date.now();
+          masterIndex.upsertSymbols(enriched);
+          const upsertMs = Date.now() - upsertStart;
+          totalSymbols += symbols.length;
+          console.log(`  [${idx}] ${repo.path}  +${symbols.length} symbols  (extract ${extractMs}ms, upsert ${upsertMs}ms)`);
+        }
       } catch (err) {
-        error(`Failed to extract from ${repo.path}: ${err instanceof Error ? err.message : String(err)}`);
+        const msg = `${repo.path}: ${err instanceof Error ? err.message : String(err)}`;
+        errors.push(msg);
+        error(`  [${idx}] ${repo.path}  ERROR: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      // Periodically checkpoint WAL to prevent unbounded growth
+      if (processed % 50 === 0) {
+        masterIndex.checkpointWAL();
       }
     }
 
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     const stats = masterIndex.getMasterStats();
-    console.log(`Master Index: ${stats.totalSymbols} public symbols across ${stats.repoCount} repos`);
+    console.log(`\nMaster Index: ${stats.totalSymbols} public symbols across ${stats.repoCount} repos  (${elapsed}s)`);
+    if (errors.length > 0) {
+      error(`\n${errors.length} repo(s) failed:`);
+      for (const e of errors) error(`  - ${e}`);
+    }
     await masterIndex.close();
   });
 

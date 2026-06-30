@@ -89,6 +89,18 @@ export class MasterIndex {
     }
     const { db } = createDatabase(this.dbPath);
     this.db = db;
+
+    // Connection-level PRAGMAs — must match the main CodeGraph DB for WAL-mode
+    // concurrency. Without WAL + busy_timeout, the 96 parallel repo-initializer
+    // workers all contend for the write lock and immediately fail with "database
+    // is locked" (SQLITE_BUSY). WAL allows concurrent reads while one writer
+    // holds the lock; busy_timeout makes workers wait instead of failing instantly.
+    db.pragma('busy_timeout = 10000');       // wait up to 10s instead of returning SQLITE_BUSY
+    db.pragma('journal_mode = WAL');         // allow concurrent readers during writes
+    db.pragma('synchronous = NORMAL');       // safe with WAL
+    db.pragma('cache_size = -16000');        // 16 MB page cache (smaller for master index)
+    db.pragma('temp_store = MEMORY');
+
     this.initSchema();
   }
 
@@ -139,13 +151,23 @@ export class MasterIndex {
 
   upsertSymbols(symbols: MasterSymbol[]): void {
     if (!this.db || symbols.length === 0) return;
+    // Wrap in a single transaction: without it, every INSERT fires FTS5 triggers
+    // and 4 index updates individually — catastrophic for repos with 400k+ symbols.
     const stmt = this.db.prepare(
       `INSERT OR REPLACE INTO symbols (name, qualified_name, kind, repo_path, file_path, language, signature, start_line, docstring, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
-    for (const sym of symbols) {
-      stmt.run(sym.name, sym.qualifiedName, sym.kind, sym.repoPath, sym.filePath,
-        sym.language, sym.signature ?? null, sym.startLine ?? null, sym.docstring ?? null, Date.now());
+    this.db.exec('BEGIN');
+    try {
+      const now = Date.now();
+      for (const sym of symbols) {
+        stmt.run(sym.name, sym.qualifiedName, sym.kind, sym.repoPath, sym.filePath,
+          sym.language, sym.signature ?? null, sym.startLine ?? null, sym.docstring ?? null, now);
+      }
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
     }
   }
 
@@ -178,6 +200,20 @@ export class MasterIndex {
       repoPath: r.repo_path, filePath: r.file_path, language: r.language,
       signature: r.signature, startLine: r.start_line, docstring: r.docstring,
     }));
+  }
+
+  /**
+   * Checkpoint the WAL to prevent unbounded growth during large builds.
+   * Without periodic checkpoints, DELETE + many INSERTs can produce WAL files
+   * exceeding available memory (observed 8GB+ WAL on 1,206-repo builds).
+   */
+  checkpointWAL(): void {
+    if (!this.db) return;
+    try {
+      this.db.pragma('wal_checkpoint(TRUNCATE)');
+    } catch {
+      // best-effort, non-fatal
+    }
   }
 
   getMasterStats(): MasterStats {
