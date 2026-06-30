@@ -2287,35 +2287,39 @@ program
       };
       process.on('SIGINT', sigintHandler);
 
-      const result = await initializeAllRepos(repos, masterIndex, {
-        concurrency,
-        detailedProgress: true,
-        signal: abort.signal,
-        onProgress: (p) => {
-          progress.onProgress({
-            completed: p.completed,
-            total: p.total,
-            currentRepo: p.currentRepo,
-            repoPhase: p.repoPhase,
-            repoCurrent: p.repoCurrent,
-            repoTotal: p.repoTotal,
-            estimatedRemainingMs: p.estimatedRemainingMs,
-          });
-        },
-      });
-
-      process.off('SIGINT', sigintHandler);
-      await progress.stop();
+      let result;
+      try {
+        result = await initializeAllRepos(repos, masterIndex, {
+          concurrency,
+          detailedProgress: true,
+          signal: abort.signal,
+          onProgress: (p) => {
+            progress.onProgress({
+              completed: p.completed,
+              total: p.total,
+              currentRepo: p.currentRepo,
+              repoPhase: p.repoPhase,
+              repoCurrent: p.repoCurrent,
+              repoTotal: p.repoTotal,
+              estimatedRemainingMs: p.estimatedRemainingMs,
+            });
+          },
+        });
+      } finally {
+        process.off('SIGINT', sigintHandler);
+        await progress.stop();
+      }
 
       writePathTxtCache(absRoot);
 
-      // Build summary lines
+      // Build summary lines — use pending.length for accurate total
+      const totalPending = pending.length;
       const summaryLines: string[] = [];
       if (interrupted) {
-        summaryLines.push(`\n⚠  Interrupted. ${result.succeeded.length}/${repos.length} repos completed.`);
+        summaryLines.push(`\n⚠  Interrupted. ${result.succeeded.length}/${totalPending} repos completed.`);
         summaryLines.push('  Run `codegraph aosp-init` again to resume from where you left off.\n');
       } else {
-        summaryLines.push(`\n✅ ${formatNumber(result.succeeded.length)}/${formatNumber(repos.length)} repos indexed successfully`);
+        summaryLines.push(`\n✅ ${formatNumber(result.succeeded.length)}/${formatNumber(totalPending)} repos indexed successfully`);
       }
 
       if (result.failed.length > 0) {
@@ -2325,7 +2329,6 @@ program
         }
       }
 
-      // Output summary via worker (or console if worker already stopped)
       for (const line of summaryLines) {
         console.log(line);
       }

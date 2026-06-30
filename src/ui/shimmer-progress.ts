@@ -105,19 +105,34 @@ export function formatETA(ms: number | undefined): string {
 }
 
 export function createAospProgress(): AospShimmerProgress {
-  const workerPath = path.join(__dirname, 'aosp-shimmer-worker.js');
-  const worker = new Worker(workerPath, {
-    workerData: { startTime: Date.now() },
-  });
+  let worker: Worker | null = null;
+  let stopped = false;
+
+  try {
+    const workerPath = path.join(__dirname, 'aosp-shimmer-worker.js');
+    worker = new Worker(workerPath, {
+      workerData: { startTime: Date.now() },
+    });
+  } catch {
+    // Worker spawn failed — return no-op fallback (design: graceful degradation)
+    return {
+      onProgress() {},
+      onSummary() {},
+      stop: async () => {},
+    };
+  }
 
   // Forward terminal resize events to worker
   const resizeHandler = (): void => {
-    worker.postMessage({ type: 'resize', cols: process.stdout.columns || 80 });
+    if (worker && !stopped) {
+      worker.postMessage({ type: 'resize', cols: process.stdout.columns || 80 });
+    }
   };
   process.on('SIGWINCH', resizeHandler);
 
   return {
     onProgress(ctx: AospProgressContext) {
+      if (!worker || stopped) return;
       const phaseName = PHASE_NAMES[ctx.repoPhase || ''] || ctx.repoPhase || '';
 
       // Format repo line: [ 45 / 1206 ]  frameworks/base
@@ -135,28 +150,44 @@ export function createAospProgress(): AospShimmerProgress {
       // Format ETA line
       const etaLine = formatETA(ctx.estimatedRemainingMs);
 
-      worker.postMessage({ type: 'update', repoLine, phaseName, percent, count, etaLine });
+      try {
+        worker.postMessage({ type: 'update', repoLine, phaseName, percent, count, etaLine });
+      } catch {
+        // Worker may have terminated — silently ignore
+      }
     },
 
     onSummary(lines: string[]) {
-      worker.postMessage({ type: 'summary', lines });
+      if (!worker || stopped) return;
+      try {
+        worker.postMessage({ type: 'summary', lines });
+      } catch {
+        // Worker may have terminated — silently ignore
+      }
     },
 
     stop() {
+      stopped = true;
       process.off('SIGWINCH', resizeHandler);
       return new Promise<void>((resolve) => {
+        if (!worker) { resolve(); return; }
         const timeout = setTimeout(() => {
-          worker.terminate().then(() => resolve());
+          worker!.terminate().then(() => resolve());
         }, 2000);
 
         worker.on('message', (msg: { type: string }) => {
           if (msg.type === 'stopped') {
             clearTimeout(timeout);
-            worker.terminate().then(() => resolve());
+            worker!.terminate().then(() => resolve());
           }
         });
 
-        worker.postMessage({ type: 'stop' });
+        try {
+          worker.postMessage({ type: 'stop' });
+        } catch {
+          clearTimeout(timeout);
+          resolve();
+        }
       });
     },
   };

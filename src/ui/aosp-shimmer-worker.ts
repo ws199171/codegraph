@@ -18,6 +18,7 @@ const BAR_WIDTH = 20;
 const RST = '\x1b[0m';
 const DM = '\x1b[2m';
 const GRN = '\x1b[32m';
+const RED = '\x1b[31m';
 const BOLD = '\x1b[1m';
 
 const startTime: number = workerData.startTime;
@@ -138,6 +139,8 @@ function finishWithSummary(lines: string[]): void {
     // Color success lines (✅) green, failure lines (❌) red
     if (line.startsWith('✅')) {
       writeStdout(`${GRN}${line}${RST}\n`);
+    } else if (line.startsWith('❌')) {
+      writeStdout(`${RED}${line}${RST}\n`);
     } else {
       writeStdout(`${line}\n`);
     }
