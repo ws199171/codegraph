@@ -1,0 +1,13 @@
+{
+  "change": "aosp-init-progress",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "d7ab6c3fb6f89a54190e6d283b3bdb5530cb27ae6b019e7a7c04e6e5e2e96f38",
+  "files": [
+    { "path": "openspec/changes/aosp-init-progress/proposal.md", "sha256": "b46e4c25b68661fb77dc13c3b72434512dc07bc89ca643fb7b9a6604690ccd61" },
+    { "path": "openspec/changes/aosp-init-progress/design.md", "sha256": "7eb7923ee05769eb8795d93f41856f2751404429f4f2600a13c580997df551ad" },
+    { "path": "openspec/changes/aosp-init-progress/tasks.md", "sha256": "30c46e95b05c3f6372d239774b91be630e3007a62b7bb41e5fffe4fd572a66c2" }
+  ]
+}
