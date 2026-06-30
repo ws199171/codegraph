@@ -1,8 +1,28 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { RepoInfo, InitOptions, InitResult } from './types';
+import { RepoInfo, InitOptions, InitResult, InitProgress } from './types';
 import { MasterIndex } from './master-index';
+
+/**
+ * Compute ETA based on a sliding window of recent successful repo durations.
+ * Uses the most recent 10 durations to smooth out variance between repo sizes.
+ * Returns undefined when no data is available yet (warmup phase).
+ *
+ * @param successfulDurations - Durations (ms) of successful repos, oldest first
+ * @param remaining - Number of repos still pending
+ * @param concurrency - Number of parallel workers
+ */
+export function computeETA(
+  successfulDurations: number[],
+  remaining: number,
+  concurrency: number,
+): number | undefined {
+  if (successfulDurations.length === 0 || remaining === 0) return undefined;
+  const window = successfulDurations.slice(-10);
+  const avg = window.reduce((a, b) => a + b, 0) / window.length;
+  return Math.round((avg * remaining) / Math.max(concurrency, 1));
+}
 
 export async function initializeAllRepos(
   repos: RepoInfo[],
@@ -16,6 +36,11 @@ export async function initializeAllRepos(
   const total = pending.length;
   let completed = 0;
 
+  // ETA sliding window — only successful repo durations are counted
+  const successfulDurations: number[] = [];
+  // Track active repos by start time for "earliest started" progress display
+  const activeRepos = new Map<string, number>(); // repoPath → startTimestamp
+
   if (total === 0) {
     return { succeeded, failed };
   }
@@ -24,42 +49,88 @@ export async function initializeAllRepos(
   const CodeGraphModule = await import('../index');
   const CodeGraph = CodeGraphModule.CodeGraph;
 
+  /** Find the earliest-started repo that is still active */
+  function findEarliestActiveRepo(): string | undefined {
+    let earliest: string | undefined;
+    let earliestTime = Infinity;
+    for (const [repoPath, startTime] of activeRepos) {
+      if (startTime < earliestTime) {
+        earliestTime = startTime;
+        earliest = repoPath;
+      }
+    }
+    return earliest;
+  }
+
   const processOne = async (repo: RepoInfo): Promise<void> => {
     const start = Date.now();
+    activeRepos.set(repo.path, start);
+
+    // Per-repo progress callback — converts IndexProgress → InitProgress.
+    // Only reports internal phase progress for the earliest-started active repo
+    // to keep the terminal display stable (no flickering between repos).
+    // Only active when options.detailedProgress is true (backward compatible).
+    const repoProgress = options.detailedProgress
+      ? (p: { phase: string; current: number; total: number }): void => {
+          const earliest = findEarliestActiveRepo();
+          if (repo.path !== earliest) return;
+
+          options.onProgress?.({
+            completed,
+            total,
+            currentRepo: repo.path,
+            repoPhase: p.phase as InitProgress['repoPhase'],
+            repoCurrent: p.current,
+            repoTotal: p.total,
+            estimatedRemainingMs: computeETA(successfulDurations, total - completed, concurrency),
+          });
+        }
+      : undefined;
+
     try {
       masterIndex.updateRepoStatus(repo.path, 'indexing');
-      const cg = await CodeGraph.open(repo.absPath);
+      const dbExists = fs.existsSync(path.join(repo.absPath, '.codegraph', 'codegraph.db'));
 
-      try {
-        const dbExists = fs.existsSync(path.join(repo.absPath, '.codegraph', 'codegraph.db'));
-        if (dbExists) {
-          await cg.sync();
-        } else {
-          await cg.indexAll();
+      if (dbExists) {
+        // Already initialized — open and sync
+        const cg = await CodeGraph.open(repo.absPath);
+        try {
+          await cg.sync({ onProgress: repoProgress });
+          masterIndex.updateRepoStatus(repo.path, 'indexed');
+          succeeded.push(repo.path);
+        } finally {
+          cg.destroy();
         }
-        masterIndex.updateRepoStatus(repo.path, 'indexed');
-        succeeded.push(repo.path);
-      } finally {
-        cg.destroy();
+      } else {
+        // Not initialized — init with index
+        const cg = await CodeGraph.init(repo.absPath, {
+          index: true,
+          onProgress: repoProgress,
+        });
+        try {
+          masterIndex.updateRepoStatus(repo.path, 'indexed');
+          succeeded.push(repo.path);
+        } finally {
+          cg.destroy();
+        }
       }
 
-      completed++;
-      options.onProgress?.({
-        completed,
-        total,
-        currentRepo: repo.path,
-        repoDurationMs: Date.now() - start,
-      });
+      // Record successful duration for ETA (failed repos are excluded)
+      successfulDurations.push(Date.now() - start);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       masterIndex.updateRepoStatus(repo.path, 'error', msg);
       failed.push({ path: repo.path, error: msg });
+      // Failed repos are NOT added to successfulDurations — ETA excludes them
+    } finally {
+      activeRepos.delete(repo.path);
       completed++;
       options.onProgress?.({
         completed,
         total,
         currentRepo: repo.path,
         repoDurationMs: Date.now() - start,
+        estimatedRemainingMs: computeETA(successfulDurations, total - completed, concurrency),
       });
     }
   };

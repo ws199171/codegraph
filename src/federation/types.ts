@@ -48,6 +48,9 @@ export interface InitOptions {
   concurrency?: number;
   onProgress?: (p: InitProgress) => void;
   signal?: AbortSignal;
+  /** When true, report per-repo phase progress (scanning/parsing/resolving).
+   *  Default false for backward compatibility — only completion progress is reported. */
+  detailedProgress?: boolean;
 }
 
 export interface InitResult {

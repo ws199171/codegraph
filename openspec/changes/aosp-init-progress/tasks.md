@@ -4,9 +4,9 @@
 
 ## 2. 仓库初始化器接入进度回调
 
-- [ ] 2.1 修改 `src/federation/repo-initializer.ts`：在 `processOne()` 内为 `CodeGraph.init()` 和 `cg.sync()` 创建 per-repo 的 `onProgress` 回调
-- [ ] 2.2 在 per-repo 回调中将 `IndexProgress` 转换为 federation 的 `InitProgress`，填充 `repoPhase`、`repoCurrent`、`repoTotal`
-- [ ] 2.3 实现 ETA 计算逻辑：维护最近 10 个仓库耗时的滑动窗口，每完成一个仓库后更新 `estimatedRemainingMs`
+- [x] 2.1 修改 `src/federation/repo-initializer.ts`：在 `processOne()` 内为 `CodeGraph.init()` 和 `cg.sync()` 创建 per-repo 的 `onProgress` 回调
+- [x] 2.2 在 per-repo 回调中将 `IndexProgress` 转换为 federation 的 `InitProgress`，填充 `repoPhase`、`repoCurrent`、`repoTotal`
+- [x] 2.3 实现 ETA 计算逻辑：维护最近 10 个仓库耗时的滑动窗口，每完成一个仓库后更新 `estimatedRemainingMs`
 
 ## 3. Shimmer 进度 UI 扩展
 
