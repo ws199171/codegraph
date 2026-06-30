@@ -38,8 +38,6 @@ export async function initializeAllRepos(
 
   // ETA sliding window — only successful repo durations are counted
   const successfulDurations: number[] = [];
-  // Track active repos by start time for "earliest started" progress display
-  const activeRepos = new Map<string, number>(); // repoPath → startTimestamp
 
   if (total === 0) {
     return { succeeded, failed };
@@ -49,32 +47,14 @@ export async function initializeAllRepos(
   const CodeGraphModule = await import('../index');
   const CodeGraph = CodeGraphModule.CodeGraph;
 
-  /** Find the earliest-started repo that is still active */
-  function findEarliestActiveRepo(): string | undefined {
-    let earliest: string | undefined;
-    let earliestTime = Infinity;
-    for (const [repoPath, startTime] of activeRepos) {
-      if (startTime < earliestTime) {
-        earliestTime = startTime;
-        earliest = repoPath;
-      }
-    }
-    return earliest;
-  }
-
   const processOne = async (repo: RepoInfo): Promise<void> => {
     const start = Date.now();
-    activeRepos.set(repo.path, start);
 
     // Per-repo progress callback — converts IndexProgress → InitProgress.
-    // Only reports internal phase progress for the earliest-started active repo
-    // to keep the terminal display stable (no flickering between repos).
+    // Every active repo reports its own progress (worker renders one line per slot).
     // Only active when options.detailedProgress is true (backward compatible).
     const repoProgress = options.detailedProgress
       ? (p: { phase: string; current: number; total: number }): void => {
-          const earliest = findEarliestActiveRepo();
-          if (repo.path !== earliest) return;
-
           options.onProgress?.({
             completed,
             total,
@@ -123,7 +103,6 @@ export async function initializeAllRepos(
       failed.push({ path: repo.path, error: msg });
       // Failed repos are NOT added to successfulDurations — ETA excludes them
     } finally {
-      activeRepos.delete(repo.path);
       completed++;
       options.onProgress?.({
         completed,

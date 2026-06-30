@@ -114,15 +114,9 @@ export function createAospProgress(): AospShimmerProgress {
       workerData: { startTime: Date.now() },
     });
   } catch {
-    // Worker spawn failed — return no-op fallback (design: graceful degradation)
-    return {
-      onProgress() {},
-      onSummary() {},
-      stop: async () => {},
-    };
+    return { onProgress() {}, onSummary() {}, stop: async () => {}, };
   }
 
-  // Forward terminal resize events to worker
   const resizeHandler = (): void => {
     if (worker && !stopped) {
       worker.postMessage({ type: 'resize', cols: process.stdout.columns || 80 });
@@ -130,40 +124,68 @@ export function createAospProgress(): AospShimmerProgress {
   };
   process.on('SIGWINCH', resizeHandler);
 
+  // Track per-repo progress.  Key = repoName, kept in insertion order for stable display.
+  const slotMap = new Map<string, { repoName: string; phaseName: string; percent: number; count: number }>();
+  let completed = 0;
+  let total = 0;
+  let currentEta = 'Calculating ETA...';
+
+  /** Rebuild slots array from map (preserves insertion order) and send to worker. */
+  function flush(): void {
+    if (!worker || stopped) return;
+    let idx = 0;
+    const slots = Array.from(slotMap.entries()).map(([, s]) => ({
+      id: idx++,
+      repoName: s.repoName,
+      phaseName: s.phaseName,
+      percent: s.percent,
+      count: s.count,
+    }));
+    try {
+      worker.postMessage({
+        type: 'update',
+        header: `[ ${formatNum(completed)} / ${formatNum(total)} ]`,
+        etaLine: currentEta,
+        slots,
+      });
+    } catch { /* worker may have terminated */ }
+  }
+
   return {
     onProgress(ctx: AospProgressContext) {
       if (!worker || stopped) return;
-      const phaseName = PHASE_NAMES[ctx.repoPhase || ''] || ctx.repoPhase || '';
 
-      // Format repo line: [ 45 / 1206 ]  frameworks/base
-      const repoLine = `[ ${formatNum(ctx.completed)} / ${formatNum(ctx.total)} ]${ctx.currentRepo ? '  ' + ctx.currentRepo : ''}`;
+      // Update header-level state
+      completed = ctx.completed;
+      total = ctx.total;
+      currentEta = formatETA(ctx.estimatedRemainingMs);
 
-      // Compute percent and count for the worker to render the animated bar
-      let percent = -1;
-      let count = 0;
-      if (ctx.repoTotal && ctx.repoTotal > 0) {
-        percent = Math.round(((ctx.repoCurrent || 0) / ctx.repoTotal) * 100);
-      } else if (ctx.repoCurrent && ctx.repoCurrent > 0) {
-        count = ctx.repoCurrent;
+      // Update or create per-repo slot.
+      // Remove slot when repoPhase is undefined (= completion signal from finally block).
+      const repoName = ctx.currentRepo || '';
+      if (repoName) {
+        if (ctx.repoPhase !== undefined) {
+          const phaseName = PHASE_NAMES[ctx.repoPhase] || ctx.repoPhase;
+          let percent = -1;
+          let count = 0;
+          if (ctx.repoTotal && ctx.repoTotal > 0) {
+            percent = Math.round(((ctx.repoCurrent || 0) / ctx.repoTotal) * 100);
+          } else if (ctx.repoCurrent && ctx.repoCurrent > 0) {
+            count = ctx.repoCurrent;
+          }
+          slotMap.set(repoName, { repoName, phaseName, percent, count });
+        } else {
+          // Repo finished — remove its slot
+          slotMap.delete(repoName);
+        }
       }
 
-      // Format ETA line
-      const etaLine = formatETA(ctx.estimatedRemainingMs);
-
-      try {
-        worker.postMessage({ type: 'update', repoLine, phaseName, percent, count, etaLine });
-      } catch {
-        // Worker may have terminated — silently ignore
-      }
+      flush();
     },
 
     onSummary(lines: string[]) {
       if (!worker || stopped) return;
-      try {
-        worker.postMessage({ type: 'summary', lines });
-      } catch {
-        // Worker may have terminated — silently ignore
-      }
+      try { worker.postMessage({ type: 'summary', lines }); } catch {}
     },
 
     stop() {
@@ -171,23 +193,9 @@ export function createAospProgress(): AospShimmerProgress {
       process.off('SIGWINCH', resizeHandler);
       return new Promise<void>((resolve) => {
         if (!worker) { resolve(); return; }
-        const timeout = setTimeout(() => {
-          worker!.terminate().then(() => resolve());
-        }, 2000);
-
-        worker.on('message', (msg: { type: string }) => {
-          if (msg.type === 'stopped') {
-            clearTimeout(timeout);
-            worker!.terminate().then(() => resolve());
-          }
-        });
-
-        try {
-          worker.postMessage({ type: 'stop' });
-        } catch {
-          clearTimeout(timeout);
-          resolve();
-        }
+        const timeout = setTimeout(() => { worker!.terminate().then(() => resolve()); }, 2000);
+        worker.on('message', (msg: { type: string }) => { if (msg.type === 'stopped') { clearTimeout(timeout); worker!.terminate().then(() => resolve()); } });
+        try { worker.postMessage({ type: 'stop' }); } catch { clearTimeout(timeout); resolve(); }
       });
     },
   };
