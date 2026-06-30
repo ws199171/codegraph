@@ -2194,9 +2194,13 @@ program
 // Federation Commands (AOSP multi-repo adapter)
 // =============================================================================
 
-// codegraph workspace init <root>
-program
-  .command('workspace init <root>')
+// codegraph workspace ...
+const workspaceCmd = program
+  .command('workspace')
+  .description('Manage AOSP multi-repo workspace');
+
+workspaceCmd
+  .command('init <root>')
   .description('Scan AOSP workspace root for all Git repositories and initialize CodeGraph on each')
   .action(async (root: string) => {
     const absRoot = path.resolve(root);
@@ -2238,9 +2242,103 @@ program
     }
   });
 
-// codegraph workspace status
+// codegraph aosp-init <root> — AOSP-specific init with two-level progress + ETA
 program
-  .command('workspace status')
+  .command('aosp-init <root>')
+  .description('Initialize AOSP workspace with two-level progress display and ETA estimation')
+  .option('-c, --concurrency <n>', 'Parallel repo initialization count')
+  .action(async (root: string, options: { concurrency?: string }) => {
+    const absRoot = path.resolve(root);
+    const osModule = await import('os');
+    const concurrency = options.concurrency ? parseInt(options.concurrency, 10) : osModule.cpus().length * 2;
+
+    try {
+      const { discoverRepos, MasterIndex, initializeAllRepos, writePathTxtCache } = await import('../federation');
+      const { createAospProgress } = await import('../ui/shimmer-progress');
+
+      const repos = discoverRepos(absRoot);
+      if (repos.length === 0) {
+        error(`No git repositories found in ${absRoot}`);
+        process.exit(1);
+      }
+
+      console.log(`Found ${formatNumber(repos.length)} repositories`);
+
+      const masterIndex = new MasterIndex(path.join(absRoot, '.codegraph-master', 'codegraph.db'));
+      await masterIndex.open();
+      masterIndex.upsertRepos(repos);
+
+      const pending = repos.filter(r => r.status !== 'indexed' && r.status !== 'indexing');
+
+      if (pending.length === 0) {
+        console.log('All repositories already indexed. Nothing to do.');
+        await masterIndex.close();
+        return;
+      }
+
+      const progress = createAospProgress();
+      const abort = new AbortController();
+      let interrupted = false;
+
+      // Handle Ctrl+C — stop progress, save state, output summary
+      const sigintHandler = (): void => {
+        interrupted = true;
+        abort.abort();
+      };
+      process.on('SIGINT', sigintHandler);
+
+      const result = await initializeAllRepos(repos, masterIndex, {
+        concurrency,
+        detailedProgress: true,
+        signal: abort.signal,
+        onProgress: (p) => {
+          progress.onProgress({
+            completed: p.completed,
+            total: p.total,
+            currentRepo: p.currentRepo,
+            repoPhase: p.repoPhase,
+            repoCurrent: p.repoCurrent,
+            repoTotal: p.repoTotal,
+            estimatedRemainingMs: p.estimatedRemainingMs,
+          });
+        },
+      });
+
+      process.off('SIGINT', sigintHandler);
+      await progress.stop();
+
+      writePathTxtCache(absRoot);
+
+      // Build summary lines
+      const summaryLines: string[] = [];
+      if (interrupted) {
+        summaryLines.push(`\n⚠  Interrupted. ${result.succeeded.length}/${repos.length} repos completed.`);
+        summaryLines.push('  Run `codegraph aosp-init` again to resume from where you left off.\n');
+      } else {
+        summaryLines.push(`\n✅ ${formatNumber(result.succeeded.length)}/${formatNumber(repos.length)} repos indexed successfully`);
+      }
+
+      if (result.failed.length > 0) {
+        summaryLines.push(`\n❌ ${result.failed.length} repos failed:`);
+        for (const f of result.failed) {
+          summaryLines.push(`    ${f.path}: ${f.error}`);
+        }
+      }
+
+      // Output summary via worker (or console if worker already stopped)
+      for (const line of summaryLines) {
+        console.log(line);
+      }
+
+      await masterIndex.close();
+    } catch (err) {
+      console.error(`\nFailed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+workspaceCmd
+  .command('status')
   .description('Show AOSP workspace index status')
   .action(async () => {
     const { resolveWorkspaceRoot, MasterIndex } = await import('../federation');
@@ -2260,9 +2358,8 @@ program
     await masterIndex.close();
   });
 
-// codegraph workspace add <repo-path>
-program
-  .command('workspace add <repoPath>')
+workspaceCmd
+  .command('add <repoPath>')
   .description('Add a repository to the AOSP workspace')
   .action(async (repoPath: string) => {
     const { resolveWorkspaceRoot, MasterIndex } = await import('../federation');
@@ -2283,9 +2380,8 @@ program
     await masterIndex.close();
   });
 
-// codegraph workspace remove <repo-path>
-program
-  .command('workspace remove <repoPath>')
+workspaceCmd
+  .command('remove <repoPath>')
   .description('Remove a repository from the AOSP workspace')
   .action(async (repoPath: string) => {
     const { resolveWorkspaceRoot, MasterIndex } = await import('../federation');
@@ -2301,9 +2397,13 @@ program
     await masterIndex.close();
   });
 
-// codegraph master build [--force]
-program
-  .command('master build')
+// codegraph master ...
+const masterCmd = program
+  .command('master')
+  .description('Manage AOSP Master Index');
+
+masterCmd
+  .command('build')
   .description('Build the AOSP Master Index from all indexed repositories')
   .option('--force', 'Force full rebuild, clearing all existing data')
   .action(async (options: { force?: boolean }) => {
@@ -2344,9 +2444,8 @@ program
     await masterIndex.close();
   });
 
-// codegraph master status
-program
-  .command('master status')
+masterCmd
+  .command('status')
   .description('Show AOSP Master Index statistics')
   .action(async () => {
     const { resolveWorkspaceRoot, MasterIndex } = await import('../federation');

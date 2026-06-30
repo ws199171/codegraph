@@ -16,16 +16,16 @@
 
 ## 4. CLI 命令注册
 
-- [ ] 4.1 在 `src/bin/codegraph.ts` 新增 `codegraph aosp-init <root>` 命令，复用 `discoverRepos()` + `initializeAllRepos()` 逻辑
-- [ ] 4.2 集成 `createAospProgress()` 并连接到 `initializeAllRepos` 的 `onProgress` 回调
-- [ ] 4.3 添加 `--concurrency <n>` 选项（默认 `os.cpus().length * 2`）
-- [ ] 4.4 处理 Ctrl+C 中断（`SIGINT`），输出中断提示和完成统计
+- [x] 4.1 在 `src/bin/codegraph.ts` 新增 `codegraph aosp-init <root>` 命令，复用 `discoverRepos()` + `initializeAllRepos()` 逻辑
+- [x] 4.2 集成 `createAospProgress()` 并连接到 `initializeAllRepos` 的 `onProgress` 回调
+- [x] 4.3 添加 `--concurrency <n>` 选项（默认 `os.cpus().length * 2`）
+- [x] 4.4 处理 Ctrl+C 中断（`SIGINT`），输出中断提示和完成统计
 
 ## 5. 测试
 
-- [ ] 5.1 创建 `__tests__/federation/aosp-init-progress.test.ts`：测试 `InitProgress` 扩展字段正确填充
-- [ ] 5.2 测试 ETA 滑动窗口计算逻辑（模拟不同耗时的仓库）
-- [ ] 5.3 测试 per-repo `onProgress` 回调正确将 `IndexProgress` 转换为 `InitProgress`
+- [x] 5.1 创建 `__tests__/federation/aosp-init-progress.test.ts`：测试 `InitProgress` 扩展字段正确填充
+- [x] 5.2 测试 ETA 滑动窗口计算逻辑（模拟不同耗时的仓库）
+- [x] 5.3 测试 per-repo `onProgress` 回调正确将 `IndexProgress` 转换为 `InitProgress`
 
 ## 6. 文档
 
