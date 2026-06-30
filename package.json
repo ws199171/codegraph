@@ -1,6 +1,6 @@
 {
   "name": "@colbymchenry/codegraph",
-  "version": "1.1.3-AOSP",
+  "version": "1.1.3-AOSP3",
   "description": "Supercharge AI coding agents with semantic code intelligence — surgical context, fewer tool calls, faster answers. 100% local.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -41,7 +41,7 @@
     "jsonc-parser": "^3.3.1",
     "picomatch": "^4.0.3",
     "sisteransi": "^1.0.5",
-    "tree-sitter-wasms": "^0.1.11",
+    "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "^0.25.3"
   },
   "devDependencies": {
@@ -53,5 +53,8 @@
   },
   "engines": {
     "node": ">=20.0.0 <25.0.0"
+  },
+  "allowScripts": {
+    "@fission-ai/openspec@1.5.0": true
   }
 }
