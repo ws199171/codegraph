@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { InitProgress } from '../../src/federation/types';
 import { computeETA } from '../../src/federation/repo-initializer';
+import { formatETA, createAospProgress } from '../../src/ui/shimmer-progress';
 
 describe('InitProgress type extension', () => {
   it('accepts new optional fields: repoPhase, repoCurrent, repoTotal, estimatedRemainingMs', () => {
@@ -64,5 +65,75 @@ describe('computeETA', () => {
   it('rounds to integer milliseconds', () => {
     // 3000 + 4000 = 7000, avg = 3500, 3 remaining, 7 workers → 3500 * 3 / 7 = 1500
     expect(computeETA([3000, 4000], 3, 7)).toBe(1500);
+  });
+});
+
+describe('formatETA', () => {
+  it('returns "Calculating ETA..." when undefined', () => {
+    expect(formatETA(undefined)).toBe('Calculating ETA...');
+  });
+
+  it('formats seconds when < 60s', () => {
+    expect(formatETA(30000)).toBe('ETA: ~30s remaining');
+  });
+
+  it('formats minutes when < 60min', () => {
+    expect(formatETA(120000)).toBe('ETA: ~2 min remaining');
+  });
+
+  it('formats hours and minutes when >= 60min', () => {
+    // 90 min = 5400000 ms → ~1h 30m
+    expect(formatETA(5400000)).toBe('ETA: ~1h 30m remaining');
+  });
+
+  it('rounds seconds', () => {
+    // 25500ms → ~26s (rounded)
+    expect(formatETA(25500)).toBe('ETA: ~26s remaining');
+  });
+});
+
+describe('createAospProgress', () => {
+  it('returns object with onProgress, onSummary, and stop methods', () => {
+    const progress = createAospProgress();
+    expect(typeof progress.onProgress).toBe('function');
+    expect(typeof progress.onSummary).toBe('function');
+    expect(typeof progress.stop).toBe('function');
+  });
+
+  it('onProgress does not throw with full context', () => {
+    const progress = createAospProgress();
+    expect(() => {
+      progress.onProgress({
+        completed: 45,
+        total: 1206,
+        currentRepo: 'frameworks/base',
+        repoPhase: 'parsing',
+        repoCurrent: 500,
+        repoTotal: 1000,
+        estimatedRemainingMs: 1380000,
+      });
+    }).not.toThrow();
+  });
+
+  it('onProgress does not throw with minimal context', () => {
+    const progress = createAospProgress();
+    expect(() => {
+      progress.onProgress({
+        completed: 0,
+        total: 10,
+      });
+    }).not.toThrow();
+  });
+
+  it('onSummary does not throw', () => {
+    const progress = createAospProgress();
+    expect(() => {
+      progress.onSummary(['✅ 1200 repos indexed', '❌ 6 repos failed']);
+    }).not.toThrow();
+  });
+
+  it('stop resolves and cleans up', async () => {
+    const progress = createAospProgress();
+    await expect(progress.stop()).resolves.toBeUndefined();
   });
 });

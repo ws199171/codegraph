@@ -10,9 +10,9 @@
 
 ## 3. Shimmer 进度 UI 扩展
 
-- [ ] 3.1 扩展 `src/ui/shimmer-progress.ts`：新增 `createAospProgress()` 工厂函数，支持传入外层仓库上下文（`currentRepo`, `completed`, `total`, `estimatedRemainingMs`）
-- [ ] 3.2 扩展 `src/ui/shimmer-worker.ts`：新增两级渲染模式 — 仓库级行（常驻显示 `[X/N] repoName`）+ 仓库内部阶段行（更新百分比）+ ETA 行
-- [ ] 3.3 实现双行 `\x1b[2A` 游标定位写入，避免单行闪烁
+- [x] 3.1 扩展 `src/ui/shimmer-progress.ts`：新增 `createAospProgress()` 工厂函数，支持传入外层仓库上下文（`currentRepo`, `completed`, `total`, `estimatedRemainingMs`）
+- [x] 3.2 新建独立 `src/ui/aosp-shimmer-worker.ts`：三级渲染模式 — 仓库级行 + 仓库内部阶段行（shimmer 动画进度条）+ ETA 行
+- [x] 3.3 实现三行 `\x1b[3A` 游标定位写入 + `\x1b[?25l` 光标隐藏，避免单行闪烁
 
 ## 4. CLI 命令注册
 
